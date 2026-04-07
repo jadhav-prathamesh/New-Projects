@@ -1,85 +1,137 @@
 # DevOps Incident Analyzer
 
-This project is a lightweight, rule-based incident analysis tool for operational logs. It helps teams detect common production issues quickly, summarize what went wrong, and suggest likely next steps without relying on external LLM APIs.
+DevOps Incident Analyzer is a lightweight, rule-based log analysis tool built to help engineers triage incidents faster. It scans raw logs, detects common operational failure patterns, summarizes what matters, and suggests practical next steps without requiring any external LLM or cloud dependency.
 
-The analyzer currently supports two entry points:
+It is designed to be simple to run, easy to extend, and useful in both local debugging sessions and lightweight incident-response workflows.
 
-- CLI analysis for direct terminal usage
-- A simple web interface for uploading log files and reviewing results in the browser
+## Why This Project Exists
 
-## Architecture Overview
+During an incident, engineers often spend too much time manually scanning noisy logs to understand what is happening. This project reduces that initial triage time by turning unstructured log files into a focused report with:
 
-The project is intentionally small and modular so the analysis logic can be reused across interfaces.
+- detected failure categories
+- severity labels
+- example log lines
+- likely root-cause suggestions
+- aggregate signal such as error ratio and affected components
 
-### Core flow
+The goal is not to replace observability platforms. It is to provide a fast first-pass incident assistant that works on plain text logs.
 
-1. Log ingestion
-   The analyzer accepts log data from a local file in CLI mode or from an uploaded file in web mode.
+## Features
 
-2. Line parsing
-   Each log line is parsed for a timestamp, severity level, and raw message content.
+- Rule-based detection for common incident patterns
+- Streaming log processing for large files
+- CLI mode for terminal-based workflows
+- Built-in web interface for file upload and report viewing
+- Human-readable output with severity and remediation guidance
+- Adapter support for generic text, JSON logs, and Cisco ASA-style logs
+- JSON and Markdown output options for scripting or documentation
+- Component-level summary to highlight noisy services or processes
 
-3. Rule evaluation
-   Regex-based detection rules scan each message for known incident signatures such as:
-   - disk full conditions
-   - timeout patterns
-   - out-of-memory failures
-   - connection errors
-   - authentication and authorization failures
+## Supported Detection Rules
 
-4. Anomaly detection
-   The analyzer tracks overall log volume and error-level frequency to flag noisy failure bursts even when a single root cause triggers many downstream errors.
+The analyzer currently identifies:
 
-5. Report generation
-   Results are converted into a human-readable report containing:
-   - issue severity
-   - match counts
-   - example log lines
-   - root-cause suggestions
+- disk full and storage exhaustion signals
+- timeout and deadline issues
+- out-of-memory conditions
+- connection and reachability failures
+- authentication and authorization failures
+- high error concentration based on error volume and ratio
 
-### File structure
+## Project Structure
 
-- [log_analyzer.py](/d:/VS/Projects/log_analyzer.py): shared parsing, analysis, CLI formatting, and built-in web server
+- [log_analyzer.py](/d:/VS/Projects/log_analyzer.py): parser, analyzer, CLI output, JSON export, and web server
+- [adapters.py](/d:/VS/Projects/adapters.py): parser adapters for text, JSON, and vendor-specific formats
 - [rules.py](/d:/VS/Projects/rules.py): detection rules, thresholds, and severity ordering
-- [sample_logs.txt](/d:/VS/Projects/sample_logs.txt): sample input for quick local testing
+- [sample_logs.txt](/d:/VS/Projects/sample_logs.txt): sample log file for quick testing
+- [json_logs_sample.jsonl](/d:/VS/Projects/json_logs_sample.jsonl): sample structured JSON log input
+- [cisco_asa_sample.txt](/d:/VS/Projects/cisco_asa_sample.txt): sample Cisco ASA-style log input
+
+## How It Works
+
+The analyzer follows a small, reusable pipeline:
+
+1. Ingest log data from a local file or browser upload.
+2. Select an adapter automatically, or use an explicit adapter for text, JSON, or Cisco ASA-style logs.
+3. Parse each line for timestamp, severity level, component name, and message body.
+4. Match each message against rule-based detection patterns.
+5. Track aggregate signals such as total errors, error ratio, time range, and top components.
+6. Produce a concise report for CLI, browser, or machine-readable JSON or Markdown output.
+
+Because the analysis is stream-based, large files can be processed without loading the entire file into memory during CLI usage.
 
 ## Real-World Use Case
 
-Imagine an e-commerce platform during a high-traffic sale window. Customers begin reporting failed checkouts and slow page loads. A DevOps engineer exports service logs from the API gateway, payment service, and background workers, then runs them through this analyzer.
+Imagine a payment platform during a weekend traffic spike. Alerts start firing for failed checkouts, increased latency, and worker instability. An engineer exports logs from the API gateway, payment service, worker processes, and authentication layer, then runs them through this analyzer.
 
-Instead of manually scanning thousands of lines, the tool can quickly highlight that:
+The report can quickly reveal that:
 
-- timeout errors are spiking between internal services
-- one worker is failing because the disk is full
-- an out-of-memory event occurred during a reconciliation job
-- authentication failures are affecting a deployment bot or service account
+- timeout errors are clustered around payment and order service calls
+- one worker is hitting a disk full condition
+- memory pressure caused an OOM kill in a background reconciliation job
+- authentication failures are affecting a service account used by automation
 
-This gives the responder an immediate starting point for triage and helps narrow attention to the most likely root causes before the outage grows worse.
+Instead of reading thousands of lines manually, the responder gets a structured summary that points to the most likely starting points for triage.
 
-## Before and After
+## Setup
 
-### Before these improvements
+### Requirements
 
-- The project logic existed, but the structure and intended flow were not documented.
-- New contributors had to inspect the source code to understand how the CLI and web interface related to the shared analyzer.
-- The real operational value of the tool was implied, not clearly demonstrated.
+- Python 3.10 or newer
 
-### After these improvements
+No third-party dependencies are required.
 
-- The architecture is documented clearly, making onboarding faster for collaborators.
-- The relationship between ingestion, parsing, rule evaluation, anomaly detection, and reporting is easier to understand.
-- A realistic DevOps incident scenario shows why the project matters in practice.
-- The project is easier to maintain, present, and extend with future features such as additional rules or optional LLM-assisted suggestions.
+### Clone and Run
 
-## How To Run
+```powershell
+git clone https://github.com/jadhav-prathamesh/New-Projects.git
+cd New-Projects
+```
 
-### CLI
+## Usage
+
+### CLI analysis
+
+Analyze the included sample log:
 
 ```powershell
 python log_analyzer.py sample_logs.txt
 ```
 
+Analyze any other log file:
+
+```powershell
+python log_analyzer.py path\to\your.log
+```
+
+Use an explicit adapter when the format is known:
+
+```powershell
+python log_analyzer.py cisco_asa_sample.txt --adapter cisco-asa
+python log_analyzer.py json_logs_sample.jsonl --adapter json
+```
+
+### JSON output
+
+Export the report as JSON:
+
+```powershell
+python log_analyzer.py sample_logs.txt --format json
+```
+
+This is useful for scripting, testing, or integrating the analyzer into a broader workflow.
+
+### Markdown output
+
+Export the report as Markdown for GitHub issues, incident notes, or internal documentation:
+
+```powershell
+python log_analyzer.py sample_logs.txt --format markdown
+```
+
 ### Web interface
+
+Start the local web UI:
 
 ```powershell
 python log_analyzer.py --web
@@ -91,9 +143,48 @@ Then open:
 http://127.0.0.1:8000
 ```
 
-## Next Possible Enhancements
+Upload a `.txt`, `.log`, `.out`, or `.json` file and review the rendered report in the browser.
 
-- add more log format adapters for vendor-specific systems
-- support JSON log parsing more explicitly
-- export reports as JSON or markdown
-- add optional LLM-based explanation mode on top of the rule-based engine
+## Example CLI Output
+
+```text
+Incident Analysis Report: sample_logs.txt
+Lines processed: 12
+Time range: 2026-04-07 09:00:01 -> 2026-04-07 09:00:30
+Log levels: ERROR=8, CRITICAL=1, FATAL=0, WARN=1, INFO=2, UNKNOWN=0
+Error ratio: 75.0%
+
+Top components:
+- payments: 4 lines
+- api-gateway: 3 lines
+- worker: 3 lines
+
+Detected issues:
+- [CRITICAL] Disk capacity issue detected. (matches: 2)
+- [HIGH] Repeated timeout behavior detected. (matches: 4)
+```
+
+## What Makes The Current Version Better
+
+Recent improvements made the tool more practical and easier to work with:
+
+- Analysis logic is shared cleanly across CLI and web modes
+- The report now includes top components and observed time range
+- Adapter selection makes vendor-specific and structured logs easier to support
+- JSON and Markdown output make the tool easier to automate and share
+- The web interface presents results in a clearer, more readable layout
+- The README now explains purpose, setup, architecture, and usage more thoroughly
+
+## Future Enhancements
+
+Potential next steps for the project:
+
+- richer parsing for nested or array-based structured JSON logs
+- additional rules for SSL, DNS, CPU saturation, and restart loops
+- saved HTML export for sharing browser reports
+- test suite for regression coverage
+- optional LLM-based explanations layered on top of the rule engine
+
+## License
+
+No license file is currently included in the repository. Add one before broader distribution if you want to make reuse terms explicit.

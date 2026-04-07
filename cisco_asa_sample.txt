@@ -1,0 +1,5 @@
+Apr 07 2026 09:10:01 branch-fw %ASA-4-313005: No space left on device while rotating local logs
+Apr 07 2026 09:10:05 branch-fw %ASA-3-313001: Connection refused for TCP src outside:10.0.0.5/443 dst inside:10.0.1.10/8443
+Apr 07 2026 09:10:08 branch-fw %ASA-3-313001: Connection refused for TCP src outside:10.0.0.8/443 dst inside:10.0.1.10/8443
+Apr 07 2026 09:10:12 branch-fw %ASA-4-733100: Authentication failed for user admin from 10.0.0.20
+Apr 07 2026 09:10:15 branch-fw %ASA-3-111008: Request timed out while contacting AAA server

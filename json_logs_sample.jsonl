@@ -1,0 +1,5 @@
+{"timestamp":"2026-04-07T09:20:01","level":"INFO","service":"checkout-api","message":"Starting request pipeline"}
+{"timestamp":"2026-04-07T09:20:04","level":"ERROR","service":"checkout-api","message":"Request timed out after 30s while calling payments-service"}
+{"timestamp":"2026-04-07T09:20:06","level":"ERROR","service":"payments-worker","message":"No space left on device while writing reconciliation snapshot"}
+{"timestamp":"2026-04-07T09:20:09","level":"CRITICAL","service":"payments-worker","message":"OOM-killed after memory spike during invoice aggregation"}
+{"timestamp":"2026-04-07T09:20:12","level":"ERROR","service":"auth-service","message":"Authentication failed for service account settlement-bot"}

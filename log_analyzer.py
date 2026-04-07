@@ -1,6 +1,6 @@
 import argparse
 import html
-import re
+import json
 from collections import Counter
 from dataclasses import dataclass, field
 from email import policy
@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Iterable, TextIO
 
+from adapters import SUPPORTED_ADAPTERS, ParsedLine, iter_parsed_lines
 from rules import (
     DETECTION_RULES,
     ERROR_FREQUENCY_THRESHOLD,
@@ -17,23 +18,7 @@ from rules import (
     EXAMPLE_LIMIT,
     SEVERITY_ORDER,
 )
-
-
-TIMESTAMP_RE = re.compile(
-    r"(?P<timestamp>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:,\d{3})?)"
-)
-LEVEL_RE = re.compile(
-    r"\b(INFO|WARN|WARNING|ERROR|CRITICAL|DEBUG|FATAL)\b",
-    re.IGNORECASE,
-)
 ERROR_LEVELS = {"ERROR", "CRITICAL", "FATAL"}
-
-
-@dataclass(slots=True)
-class ParsedLine:
-    timestamp: str
-    level: str
-    message: str
 
 
 @dataclass(slots=True)
@@ -56,6 +41,9 @@ class AnalysisReport:
     totals: Counter
     incidents: list[IncidentSummary]
     source_name: str = "uploaded log"
+    top_components: list[tuple[str, int]] = field(default_factory=list)
+    first_timestamp: str = "N/A"
+    last_timestamp: str = "N/A"
 
     @property
     def lines_processed(self) -> int:
@@ -66,32 +54,31 @@ class AnalysisReport:
         if not self.lines_processed:
             return 0.0
         return self.totals["error_lines"] / self.lines_processed
-
-
-def parse_line(line: str) -> ParsedLine:
-    timestamp_match = TIMESTAMP_RE.search(line)
-    level_match = LEVEL_RE.search(line)
-    level = level_match.group(1).upper() if level_match else "UNKNOWN"
-
-    return ParsedLine(
-        timestamp=timestamp_match.group("timestamp") if timestamp_match else "N/A",
-        level="WARN" if level == "WARNING" else level,
-        message=line.rstrip("\r\n"),
-    )
-
-
-def analyze_lines(lines: Iterable[str], source_name: str = "input") -> AnalysisReport:
+def analyze_lines(
+    lines: Iterable[str],
+    source_name: str = "input",
+    adapter: str = "auto",
+) -> AnalysisReport:
     totals: Counter = Counter()
     incidents_by_key: dict[str, IncidentSummary] = {}
+    component_counter: Counter = Counter()
+    first_timestamp = "N/A"
+    last_timestamp = "N/A"
     rules = DETECTION_RULES
+    resolved_adapter, parsed_lines = iter_parsed_lines(lines, adapter, source_name)
 
-    for raw_line in lines:
-        parsed = parse_line(raw_line)
+    for parsed in parsed_lines:
         if not parsed.message:
             continue
 
         totals["lines"] += 1
         totals[f"level_{parsed.level.lower()}"] += 1
+        component_counter[parsed.component] += 1
+
+        if parsed.timestamp != "N/A":
+            if first_timestamp == "N/A":
+                first_timestamp = parsed.timestamp
+            last_timestamp = parsed.timestamp
 
         if parsed.level in ERROR_LEVELS:
             totals["error_lines"] += 1
@@ -134,26 +121,42 @@ def analyze_lines(lines: Iterable[str], source_name: str = "input") -> AnalysisR
         incidents_by_key.values(),
         key=lambda item: (SEVERITY_ORDER.get(item.severity, 99), -item.count, item.key),
     )
-    return AnalysisReport(totals=totals, incidents=incidents, source_name=source_name)
+    return AnalysisReport(
+        totals=totals,
+        incidents=incidents,
+        source_name=f"{source_name} [{resolved_adapter}]",
+        top_components=component_counter.most_common(5),
+        first_timestamp=first_timestamp,
+        last_timestamp=last_timestamp,
+    )
 
 
-def analyze_stream(stream: TextIO, source_name: str = "input") -> AnalysisReport:
-    return analyze_lines(stream, source_name=source_name)
+def analyze_stream(
+    stream: TextIO,
+    source_name: str = "input",
+    adapter: str = "auto",
+) -> AnalysisReport:
+    return analyze_lines(stream, source_name=source_name, adapter=adapter)
 
 
-def analyze_text(text: str, source_name: str = "input") -> AnalysisReport:
-    return analyze_lines(text.splitlines(), source_name=source_name)
+def analyze_text(
+    text: str,
+    source_name: str = "input",
+    adapter: str = "auto",
+) -> AnalysisReport:
+    return analyze_lines(text.splitlines(), source_name=source_name, adapter=adapter)
 
 
-def analyze_log(path: Path) -> AnalysisReport:
+def analyze_log(path: Path, adapter: str = "auto") -> AnalysisReport:
     with path.open("r", encoding="utf-8", errors="replace") as handle:
-        return analyze_stream(handle, source_name=path.name)
+        return analyze_stream(handle, source_name=path.name, adapter=adapter)
 
 
 def format_cli_report(report: AnalysisReport) -> str:
     lines = [
         f"Incident Analysis Report: {report.source_name}",
         f"Lines processed: {report.lines_processed}",
+        f"Time range: {report.first_timestamp} -> {report.last_timestamp}",
         (
             "Log levels: "
             f"ERROR={report.totals['level_error']}, "
@@ -166,6 +169,12 @@ def format_cli_report(report: AnalysisReport) -> str:
         f"Error ratio: {report.error_ratio:.1%}",
         "",
     ]
+
+    if report.top_components:
+        lines.append("Top components:")
+        for component, count in report.top_components:
+            lines.append(f"- {component}: {count} lines")
+        lines.append("")
 
     if not report.incidents:
         lines.append("No known incident patterns were detected.")
@@ -180,6 +189,85 @@ def format_cli_report(report: AnalysisReport) -> str:
         lines.append("  Examples:")
         for example in incident.examples:
             lines.append(f"  - {example}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
+
+
+def report_to_dict(report: AnalysisReport) -> dict:
+    return {
+        "source_name": report.source_name,
+        "lines_processed": report.lines_processed,
+        "first_timestamp": report.first_timestamp,
+        "last_timestamp": report.last_timestamp,
+        "error_ratio": round(report.error_ratio, 4),
+        "log_levels": {
+            "error": report.totals["level_error"],
+            "critical": report.totals["level_critical"],
+            "fatal": report.totals["level_fatal"],
+            "warn": report.totals["level_warn"],
+            "info": report.totals["level_info"],
+            "unknown": report.totals["level_unknown"],
+        },
+        "top_components": [
+            {"name": component, "count": count}
+            for component, count in report.top_components
+        ],
+        "incidents": [
+            {
+                "key": incident.key,
+                "severity": incident.severity,
+                "summary": incident.summary,
+                "suggestion": incident.suggestion,
+                "count": incident.count,
+                "examples": incident.examples,
+            }
+            for incident in report.incidents
+        ],
+    }
+
+
+def format_markdown_report(report: AnalysisReport) -> str:
+    lines = [
+        f"# Incident Analysis Report",
+        "",
+        f"- Source: `{report.source_name}`",
+        f"- Lines processed: `{report.lines_processed}`",
+        f"- Time range: `{report.first_timestamp}` to `{report.last_timestamp}`",
+        f"- Error ratio: `{report.error_ratio:.1%}`",
+        "",
+        "## Log Levels",
+        "",
+        f"- ERROR: `{report.totals['level_error']}`",
+        f"- CRITICAL: `{report.totals['level_critical']}`",
+        f"- FATAL: `{report.totals['level_fatal']}`",
+        f"- WARN: `{report.totals['level_warn']}`",
+        f"- INFO: `{report.totals['level_info']}`",
+        f"- UNKNOWN: `{report.totals['level_unknown']}`",
+        "",
+    ]
+
+    if report.top_components:
+        lines.extend(["## Top Components", ""])
+        for component, count in report.top_components:
+            lines.append(f"- `{component}`: {count} lines")
+        lines.append("")
+
+    if not report.incidents:
+        lines.extend(["## Detected Issues", "", "No known incident patterns were detected."])
+        return "\n".join(lines)
+
+    lines.extend(["## Detected Issues", ""])
+    for incident in report.incidents:
+        lines.append(
+            f"### {incident.severity.upper()}: {incident.summary} ({incident.count} matches)"
+        )
+        lines.append("")
+        lines.append(f"Suggestion: {incident.suggestion}")
+        lines.append("")
+        lines.append("Examples:")
+        for example in incident.examples:
+            lines.append(f"- `{example}`")
         lines.append("")
 
     return "\n".join(lines).rstrip()
@@ -200,6 +288,10 @@ def render_html_page(report: AnalysisReport | None = None, error_message: str = 
         summary_html = f"""
         <section class="summary-grid">
           <article class="card">
+            <h2>Source</h2>
+            <p class="metric metric-small">{html.escape(report.source_name)}</p>
+          </article>
+          <article class="card">
             <h2>Lines Processed</h2>
             <p class="metric">{report.lines_processed}</p>
           </article>
@@ -216,6 +308,10 @@ def render_html_page(report: AnalysisReport | None = None, error_message: str = 
             <p class="metric">{len(report.incidents)}</p>
           </article>
         </section>
+        <section class="card range-card">
+          <h2>Observed Time Range</h2>
+          <p>{html.escape(report.first_timestamp)} to {html.escape(report.last_timestamp)}</p>
+        </section>
         <section class="card levels">
           <h2>Log Levels</h2>
           <div class="level-row">
@@ -228,6 +324,18 @@ def render_html_page(report: AnalysisReport | None = None, error_message: str = 
           </div>
         </section>
         """
+
+        if report.top_components:
+            component_items = "".join(
+                f"<li><strong>{html.escape(component)}</strong><span>{count} lines</span></li>"
+                for component, count in report.top_components
+            )
+            summary_html += f"""
+            <section class="card components-card">
+              <h2>Top Components</h2>
+              <ul class="component-list">{component_items}</ul>
+            </section>
+            """
 
         if report.incidents:
             cards = []
@@ -382,8 +490,38 @@ def render_html_page(report: AnalysisReport | None = None, error_message: str = 
       font-size: 2rem;
       font-weight: 700;
     }}
+    .metric-small {{
+      font-size: 1.1rem;
+      line-height: 1.5;
+      word-break: break-word;
+    }}
+    .range-card,
     .levels {{
       margin-bottom: 24px;
+    }}
+    .range-card p {{
+      margin: 12px 0 0;
+      color: var(--muted);
+    }}
+    .components-card {{
+      margin-bottom: 24px;
+      padding: 20px;
+    }}
+    .component-list {{
+      list-style: none;
+      margin: 14px 0 0;
+      padding: 0;
+      display: grid;
+      gap: 10px;
+    }}
+    .component-list li {{
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: #f6f8f8;
+      color: var(--muted);
     }}
     .level-row {{
       display: flex;
@@ -474,7 +612,7 @@ def render_html_page(report: AnalysisReport | None = None, error_message: str = 
       <form class="upload-form" method="post" enctype="multipart/form-data">
         <label class="upload-label" for="logfile">
           Choose a log file
-          <input id="logfile" name="logfile" type="file" accept=".txt,.log,.out,.json">
+          <input id="logfile" name="logfile" type="file" accept=".txt,.log,.out,.json,.jsonl">
         </label>
         <button type="submit">Analyze Log File</button>
       </form>
@@ -507,10 +645,7 @@ class AnalyzerHTTPRequestHandler(BaseHTTPRequestHandler):
                 return
 
             file_name, file_lines = upload
-            report = analyze_stream(
-                file_lines,
-                source_name=file_name,
-            )
+            report = analyze_stream(file_lines, source_name=file_name, adapter="auto")
             self._send_html(render_html_page(report=report))
         except Exception as exc:
             self._send_html(
@@ -569,6 +704,18 @@ def main() -> None:
     )
     parser.add_argument("logfile", nargs="?", help="Path to the log file to analyze.")
     parser.add_argument(
+        "--format",
+        choices=("text", "json", "markdown"),
+        default="text",
+        help="Output format for CLI mode.",
+    )
+    parser.add_argument(
+        "--adapter",
+        choices=SUPPORTED_ADAPTERS,
+        default="auto",
+        help="Select a parser adapter for generic text, JSON logs, or vendor-specific logs.",
+    )
+    parser.add_argument(
         "--web",
         action="store_true",
         help="Start a simple web interface for uploading and analyzing logs.",
@@ -588,7 +735,15 @@ def main() -> None:
     if not path.exists() or not path.is_file():
         raise SystemExit(f"Log file not found: {path}")
 
-    print(format_cli_report(analyze_log(path)))
+    report = analyze_log(path, adapter=args.adapter)
+    if args.format == "json":
+        print(json.dumps(report_to_dict(report), indent=2))
+        return
+    if args.format == "markdown":
+        print(format_markdown_report(report))
+        return
+
+    print(format_cli_report(report))
 
 
 if __name__ == "__main__":
