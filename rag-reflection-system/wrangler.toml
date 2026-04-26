@@ -1,0 +1,23 @@
+name = "rag-reflection-system"
+main = "src/index.ts"
+compatibility_date = "2026-04-26"
+
+[vars]
+EMBEDDING_MODEL = "@cf/baai/bge-small-en-v1.5"
+REFLECTION_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+TOP_K = "6"
+REFLECTION_SEARCH_K = "3"
+CONSOLIDATION_THRESHOLD = "3"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "rag_reflection_db"
+database_id = "replace-with-your-d1-database-id"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "rag-reflection-index"
+
+[ai]
+binding = "AI"
+
