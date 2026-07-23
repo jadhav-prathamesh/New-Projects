@@ -143,53 +143,51 @@ Detected issues:
 
 ## 🏗️ Architecture
 
+```mermaid
+flowchart TB
+    subgraph Input["📂 Input Log File"]
+        TXT[".txt"]
+        JSON[".json / .jsonl"]
+        LOG[".log / .out"]
+    end
+
+    subgraph Adapter["🔌 Adapter Layer"]
+        TA["Text Adapter"]
+        JA["JSON Adapter"]
+        CA["Cisco ASA Adapter"]
+    end
+
+    subgraph Engine["⚙️ Parsing Engine"]
+        TS["timestamp extraction"]
+        LV["level detection"]
+        CP["component parsing"]
+        MS["message extraction"]
+    end
+
+    subgraph Rules["📋 Rule Detection Engine"]
+        R1["💾 Disk Full 🔴"]
+        R2["🧠 OOM Kill 🔴"]
+        R3["⏱️ Timeout 🟠"]
+        R4["🔌 Connection Refused 🟠"]
+        R5["🔑 Auth Failure 🟡"]
+        R6["📈 High Error Ratio 🟠"]
+    end
+
+    subgraph Report["📊 Report Generator"]
+        CLI["CLI Text"]
+        JSN["JSON"]
+        MD["Markdown"]
+    end
+
+    subgraph Output["📤 Output Channel"]
+        TERM["💻 Terminal"]
+        WEB["🌐 Web UI :8000"]
+    end
+
+    Input --> Adapter --> Engine --> Rules --> Report --> Output
 ```
-                    ┌─────────────────────────────┐
-                    │       Input Log File         │
-                    │  (.txt, .json, .jsonl, .log) │
-                    └───────────┬─────────────────┘
-                                │
-                    ┌───────────▼─────────────────┐
-                    │     Adapter Layer            │
-                    │  ┌──────┐ ┌──────┐ ┌──────┐ │
-                    │  │ Text │ │ JSON │ │Cisco │ │
-                    │  │      │ │      │ │ ASA  │ │
-                    │  └──────┘ └──────┘ └──────┘ │
-                    └───────────┬─────────────────┘
-                                │
-                    ┌───────────▼─────────────────┐
-                    │     Parsing Engine           │
-                    │  (timestamp, level,          │
-                    │   component, message)        │
-                    └───────────┬─────────────────┘
-                                │
-                    ┌───────────▼─────────────────┐
-                    │     Rule Detection Engine    │
-                    │  ┌─────────────────────────┐ │
-                    │  │ • Disk Full (CRITICAL)  │ │
-                    │  │ • OOM Kill (CRITICAL)   │ │
-                    │  │ • Timeout (HIGH)        │ │
-                    │  │ • Connection Refused    │ │
-                    │  │ • Auth Failure (MEDIUM) │ │
-                    │  │ • High Error Ratio      │ │
-                    │  └─────────────────────────┘ │
-                    └───────────┬─────────────────┘
-                                │
-                    ┌───────────▼─────────────────┐
-                    │     Report Generator         │
-                    │  ┌──────┐ ┌──────┐ ┌──────┐ │
-                    │  │ CLI  │ │ JSON │ │ Mark │ │
-                    │  │ Text │ │      │ │ down │ │
-                    │  └──────┘ └──────┘ └──────┘ │
-                    └───────────┬─────────────────┘
-                                │
-                    ┌───────────▼─────────────────┐
-                    │     Output Channel           │
-                    │  ┌────────┐ ┌──────────────┐ │
-                    │  │Terminal│ │ Web UI (:8000)│ │
-                    │  └────────┘ └──────────────┘ │
-                    └─────────────────────────────┘
-```
+
+---
 
 ### Project Structure
 
