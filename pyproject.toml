@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "devops-incident-analyzer"
+version = "1.0.0"
+description = "Rule-based log analysis tool for rapid incident triage — no LLM required"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Prathamesh Jadhav", email = "jadhavprathmesh042@gmail.com" },
+]
+keywords = [
+    "incident-response",
+    "log-analysis",
+    "devops",
+    "sre",
+    "triage",
+    "monitoring",
+    "observability",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
+]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/jadhav-prathamesh/New-Projects"
+Repository = "https://github.com/jadhav-prathamesh/New-Projects"
+"Bug Tracker" = "https://github.com/jadhav-prathamesh/New-Projects/issues"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = ["E", "W", "F", "I", "UP"]
+ignore = ["E501"]
+
